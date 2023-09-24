@@ -83,6 +83,18 @@ We aim to continuously improve this integration by:
 
 ---
 
+## Tips
+
+If you wish to support the development of the project and prioritize the addition of your device model, you can support me:
+
+- [Donation Alerts](https://www.donationalerts.com/r/beshelkek)
+- USDT TRC20: TPFvwXqigaHAmeUoQBk1f6sFDFEkGxpZFk
+- [Telegram TON](https://t.me/Beshelmek)
+
+Don't forget to leave a message in Telegram and your device model.
+
+---
+
 ## License
 
 This project is under the MIT License. For full license details, please refer to the [LICENSE file](https://github.com/Beshelmek/govee_ble_lights/blob/main/LICENSE) in this repository.
