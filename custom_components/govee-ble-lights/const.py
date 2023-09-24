@@ -1,0 +1,1 @@
+DOMAIN = "govee-ble-lights"
