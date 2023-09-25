@@ -57,7 +57,6 @@ class GoveeBluetoothLight(LightEntity):
     _attr_supported_color_modes = {ColorMode.RGB}
     _attr_supported_features = LightEntityFeature(
         LightEntityFeature.EFFECT | LightEntityFeature.FLASH | LightEntityFeature.TRANSITION)
-    _attr_effect_list = []
 
     def __init__(self, light, ble_device, config_entry: ConfigEntry) -> None:
         """Initialize an bluetooth light."""
@@ -68,17 +67,21 @@ class GoveeBluetoothLight(LightEntity):
         self._brightness = None
         self._data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
 
+    @property
+    def effect_list(self) -> list[str] | None:
+        effect_list = []
         for categoryIdx, category in enumerate(self._data['data']['categories']):
             for sceneIdx, scene in enumerate(category['scenes']):
                 for leffectIdx, lightEffect in enumerate(scene['lightEffects']):
                     for seffectIxd, specialEffect in enumerate(lightEffect['specialEffect']):
-                        if self._model in specialEffect['supportSku']:
-                            # Workaround cause we need to store some metadata in effect (effect names not unique)
+                        #if 'supportSku' not in specialEffect or self._model in specialEffect['supportSku']:
+                        # Workaround cause we need to store some metadata in effect (effect names not unique)
+                        indexes = str(categoryIdx) + "/" + str(sceneIdx) + "/" + str(leffectIdx) + "/" + str(
+                            seffectIxd)
+                        effect_list.append(
+                            category['categoryName'] + " - " + scene['sceneName'] + ' - ' + lightEffect['scenceName'] + " [" + indexes + "]")
 
-                            indexes = str(categoryIdx) + "/" + str(sceneIdx) + "/" + str(leffectIdx) + "/" + str(
-                                seffectIxd)
-                            self._attr_effect_list.append(
-                                category['categoryName'] + " - " + scene['sceneName'] + " [" + indexes + "]")
+        return effect_list
 
     @property
     def name(self) -> str:
