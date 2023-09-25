@@ -30,6 +30,8 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
         for file in jsons_path.iterdir():
             self._available_models.append(file.name.replace(".json", ""))
 
+        self._available_models.sort()
+
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> FlowResult:
