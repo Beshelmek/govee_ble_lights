@@ -86,7 +86,7 @@ class GoveeBluetoothLight(LightEntity):
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return "GOVEE Light"
+        return self._model + "-" + self._mac[-4:]#"GOVEE Light"
 
     @property
     def unique_id(self) -> str:
