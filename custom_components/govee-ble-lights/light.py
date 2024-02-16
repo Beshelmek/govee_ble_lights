@@ -9,7 +9,7 @@ import bleak_retry_connector
 
 from bleak import BleakClient
 from homeassistant.components import bluetooth
-from homeassistant.components.light import (ATTR_BRIGHTNESS, ATTR_RGB_COLOR, ATTR_EFFECT, ColorMode, LightEntity,
+from homeassistant.components.light import (ATTR_BRIGHTNESS, ATTR_RGB_COLOR, ATTR_RGBWW_COLOR, ATTR_EFFECT, ColorMode, LightEntity,
                                             LightEntityFeature)
 
 from homeassistant.core import HomeAssistant
@@ -54,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
 
 class GoveeBluetoothLight(LightEntity):
     _attr_color_mode = ColorMode.RGB
-    _attr_supported_color_modes = {ColorMode.RGB}
+    _attr_supported_color_modes = {ColorMode.RGB, ColorMode.RGBWW}
     _attr_supported_features = LightEntityFeature(
         LightEntityFeature.EFFECT | LightEntityFeature.FLASH | LightEntityFeature.TRANSITION)
 
@@ -86,7 +86,7 @@ class GoveeBluetoothLight(LightEntity):
     @property
     def name(self) -> str:
         """Return the name of the switch."""
-        return self._model + "-" + self._mac[-5:]#"GOVEE Light"
+        return self._model + "-" + self._mac[-7:]#"GOVEE Light"
 
     @property
     def unique_id(self) -> str:
