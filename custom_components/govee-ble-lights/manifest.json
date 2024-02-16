@@ -1,7 +1,7 @@
 {
     "domain": "govee-ble-lights",
     "name": "Govee BLE Light Advanced",
-    "integration_type": "hub",
+    "integration_type": "device",
     "bluetooth": [
         { "local_name": "Govee_*", "connectable": false },
         { "local_name": "GBK_*", "connectable": false },
