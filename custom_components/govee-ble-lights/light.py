@@ -43,6 +43,7 @@ class LedMode(IntEnum):
     MANUAL = 0x02
     MICROPHONE = 0x06
     SCENES = 0x05
+    MANUAL = 0x0D
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
@@ -54,7 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
 
 class GoveeBluetoothLight(LightEntity):
     _attr_color_mode = ColorMode.RGB
-    _attr_supported_color_modes = {ColorMode.RGB, ColorMode.RGBWW}
+    _attr_supported_color_modes = {ColorMode.RGB}
     _attr_supported_features = LightEntityFeature(
         LightEntityFeature.EFFECT | LightEntityFeature.FLASH | LightEntityFeature.TRANSITION)
 
@@ -109,11 +110,22 @@ class GoveeBluetoothLight(LightEntity):
 
         if ATTR_BRIGHTNESS in kwargs:
             brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
+            # H6008 brightness found via https://github.com/hardcpp/GoveeBleMqttServer.git
+            if self._model == "H6008":
+                brightness = kwargs.get(int(ATTR_BRIGHTNESS * 100), 100)
+            # ///////////////////////////////////////////////////////////////////////////
             commands.append(self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [brightness]))
             self._brightness = brightness
 
         if ATTR_RGB_COLOR in kwargs:
             red, green, blue = kwargs.get(ATTR_RGB_COLOR)
+
+            # H6008 ledmode found via https://github.com/hardcpp/GoveeBleMqttServer.git
+            led_mode = LedMode.MANUAL
+            if self._model == "H6008":
+                led_mode = LedMode.MANUAL2
+            # ////////////////////////////////
+                
             commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
 
         if ATTR_EFFECT in kwargs:
