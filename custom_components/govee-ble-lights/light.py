@@ -43,7 +43,7 @@ class LedMode(IntEnum):
     MANUAL = 0x02
     MICROPHONE = 0x06
     SCENES = 0x05
-    MANUAL = 0x0D
+    MANUAL2 = 0x0D
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
@@ -126,7 +126,7 @@ class GoveeBluetoothLight(LightEntity):
                 led_mode = LedMode.MANUAL2
             # ////////////////////////////////
                 
-            commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
+            commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [led_mode, red, green, blue]))
 
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
