@@ -2,7 +2,7 @@
 
 ![Govee Logo](assets/govee-logo.png)
 
-A powerful and seamless integration to control your Govee lighting devices via BLE directly from HomeAssistant with full features support.
+A powerful and seamless integration to control your Govee lighting devices via Govee API or BLE directly from HomeAssistant with full features support.
 
 ---
 
@@ -21,6 +21,8 @@ A powerful and seamless integration to control your Govee lighting devices via B
 
 - 🚀 **Direct BLE Control**: No need for middlewares or bridges. Connect and control your Govee devices directly through Bluetooth Low Energy.
 
+- ☁️ **API Control**: Supported all light devices with full features support including scenes!
+
 - 🌈 **Scene Selection**: Leverage the full potential of your Govee lights by choosing from all available scenes, transforming the ambiance of your room instantly.
   
 - 💡 **Comprehensive Lighting Control**: Adjust brightness, change colors, or switch on/off with ease.
@@ -29,9 +31,13 @@ A powerful and seamless integration to control your Govee lighting devices via B
 
 ## Configuration
 
-### Permissions
+### What is needed
 
-Before you begin, make certain HomeAssistant can access BLE on your platform. Ensure your HomeAssistant instance is granted permissions to utilize the Bluetooth Low Energy of your host machine.
+For Direct BLE Control:
+- Before you begin, make certain HomeAssistant can access BLE on your platform. Ensure your HomeAssistant instance is granted permissions to utilize the Bluetooth Low Energy of your host machine.
+
+For Govee API Control:
+- Retrieve Govee-API-Key as described [here](https://developer.govee.com/reference/apply-you-govee-api-key), setup integration with API type ad fill your API key.
 
 ## Usage
 
@@ -39,7 +45,7 @@ With the integration setup, your Govee devices will appear as entities within Ho
 
 ---
 
-## Troubleshooting
+## Troubleshooting for BLE
 
 If you're facing issues with the integration, consider the following steps:
 
@@ -77,21 +83,8 @@ If you're facing issues with the integration, consider the following steps:
 
 We aim to continuously improve this integration by:
 
-- Supporting more Govee device models
-- Adding more granular control features
+- Supporting more Govee device models for BLE
 - Enhancing the overall user experience and stability
-
----
-
-## Tips
-
-If you wish to support the development of the project and prioritize the addition of your device model, you can support me:
-
-- [Donation Alerts](https://www.donationalerts.com/r/beshelkek)
-- USDT TRC20: TPFvwXqigaHAmeUoQBk1f6sFDFEkGxpZFk
-- [Telegram TON](https://t.me/Beshelmek)
-
-Don't forget to leave a message in Telegram and your device model.
 
 ---
 

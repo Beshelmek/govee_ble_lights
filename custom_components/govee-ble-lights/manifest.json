@@ -5,13 +5,14 @@
     "bluetooth": [
         { "local_name": "Govee_*", "connectable": false },
         { "local_name": "GBK_*", "connectable": false },
+        { "local_name": "ihoment_*", "connectable": false },
         {
             "service_uuid": "00010203-0405-0607-0809-0a0b0c0d2b11", "connectable": false
         }
     ],
     "codeowners": ["@Beshelmek"],
     "requirements": ["bleak-retry-connector"],
-    "dependencies": ["network", "bluetooth"],
+    "dependencies": ["network"],
     "issue_tracker": "https://github.com/Beshelmek/govee_ble_lights/issues",
     "documentation": "https://github.com/Beshelmek/govee_ble_lights",
     "config_flow": true,
