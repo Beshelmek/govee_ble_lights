@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
 EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
-
+SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
 
 class LedCommand(IntEnum):
     """ A control command packet's type. """
@@ -45,6 +45,7 @@ class LedMode(IntEnum):
     MANUAL = 0x02
     MICROPHONE = 0x06
     SCENES = 0x05
+    SEGMENTS = 0x15
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
@@ -185,6 +186,7 @@ class GoveeBluetoothLight(LightEntity):
         """Initialize an bluetooth light."""
         self._mac = hub.address
         self._model = config_entry.data["model"]
+        self._is_segmented = self._model in SEGMENTED_MODELS
         self._ble_device = ble_device
         self._state = None
         self._brightness = None
@@ -238,8 +240,13 @@ class GoveeBluetoothLight(LightEntity):
 
         if ATTR_RGB_COLOR in kwargs:
             red, green, blue = kwargs.get(ATTR_RGB_COLOR)
-            commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
 
+            if self._is_segmented:
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
+                                                              [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
+                                                               0x00, 0x00, 0xFF, 0x7F]))
+            else:
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
             if len(effect) > 0:
