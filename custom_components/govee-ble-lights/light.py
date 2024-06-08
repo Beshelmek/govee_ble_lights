@@ -29,6 +29,7 @@ UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
 EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
 
+
 class LedCommand(IntEnum):
     """ A control command packet's type. """
     POWER = 0x01
@@ -39,7 +40,7 @@ class LedCommand(IntEnum):
 class LedMode(IntEnum):
     """
     The mode in which a color change happens in.
-    
+
     Currently only manual is supported.
     """
     MANUAL = 0x02
@@ -246,7 +247,7 @@ class GoveeBluetoothLight(LightEntity):
                                                               [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
                                                                0x00, 0x00, 0xFF, 0x7F]))
             else:
-                commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [0x0d, red, green, blue]))
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
             if len(effect) > 0:
