@@ -115,7 +115,7 @@ class GoveeAPILight(LightEntity, dict):
         """Retrieve latest state."""
         _LOGGER.info("Updating device: %s", self.device_data)
 
-        if LightEntityFeature.EFFECT in self.supported_features_compat:
+        if LightEntityFeature.EFFECT in self.supported_features:
             if self._attr_effect_list is None or len(self._attr_effect_list) == 0:
                 _LOGGER.info("Updating device effects: %s", self.device_data)
 
