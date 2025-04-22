@@ -176,6 +176,7 @@ class GoveeAPILight(LightEntity, dict):
         await self.hub.api.toggle_power(self.sku, self.device, 0)
 
 
+# H6001 uses the same BLE commands as other non-segmented models.
 class GoveeBluetoothLight(LightEntity):
     _attr_color_mode = ColorMode.RGB
     _attr_supported_color_modes = {ColorMode.RGB}
