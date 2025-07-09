@@ -109,8 +109,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    if (MAJOR_VERSION, MINOR_VERSION) < (2023, 1):
-        raise Exception("unsupported hass version")
+    if (MAJOR_VERSION, MINOR_VERSION) < (2025, 7):
+        raise Exception("unsupported hass version, need at least 2025.7")
 
     # init storage for registries
     hass.data[DOMAIN] = {}
