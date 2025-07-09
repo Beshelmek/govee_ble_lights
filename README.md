@@ -29,6 +29,19 @@ A powerful and seamless integration to control your Govee lighting devices via G
 
 ---
 
+## Installation
+
+This custom integration is installed using the [Home Assistant Community Store](https://www.hacs.xyz/), or "HACS" for short. If you have not already done so, you'll need to first [install HACS](https://www.hacs.xyz/docs/use/download/download/).
+
+Once HACS is installed, load Home Assistant, click "HACS" in the sidebar, click the three dots button at the top right of the page, and click "Custom Repositories". In the dialog that pops up, enter the following details:
+ - **Repository**: https://github.com/Beshelmek/govee_ble_lights
+ - **Type**: Integration
+
+Click "Add", and after a few seconds, you should be able to search for "Govee BLE" on the HACS page. Click it, then click the "Download" button at the bottom right.
+
+Once the download completes, restart Home Assistant (Developer Tools → Restart), and you should be able to configure it the same way as any other Home Assistant integration: Settings → Devices and Services → Add Integration → Search for "Govee" → Click "Govee BLE Light Advanced".
+
+
 ## Configuration
 
 ### What is needed
