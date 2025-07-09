@@ -15,6 +15,7 @@ from homeassistant.components.light import (ATTR_BRIGHTNESS, ATTR_RGB_COLOR, ATT
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.storage import Store
+import homeassistant.util.color as color_util
 
 from .const import DOMAIN
 from pathlib import Path
@@ -22,6 +23,10 @@ import json
 from .govee_utils import prepareMultiplePacketsData
 import base64
 from . import Hub
+from datetime import timedelta
+
+SCAN_INTERVAL = timedelta(seconds=30)
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,11 +97,15 @@ class GoveeAPILight(LightEntity, dict):
                 color_modes.add(ColorMode.BRIGHTNESS)
             if cap['instance'] == 'colorTemperatureK':
                 color_modes.add(ColorMode.COLOR_TEMP)
+                self._attr_min_color_temp_kelvin = cap['parameters']['range']['min']
+                self._attr_max_color_temp_kelvin = cap['parameters']['range']['max']
+                self._attr_min_mireds = color_util.color_temperature_kelvin_to_mired(self._attr_min_color_temp_kelvin)
+                self._attr_max_mireds = color_util.color_temperature_kelvin_to_mired(self._attr_max_color_temp_kelvin)
             if cap['instance'] == 'colorRgb':
                 color_modes.add(ColorMode.RGB)
             if cap['instance'] == 'lightScene':
                 self._attr_supported_features = LightEntityFeature(
-                    LightEntityFeature.EFFECT
+                    LightEntityFeature.EFFECT | LightEntityFeature.FLASH | LightEntityFeature.TRANSITION
                 )
 
         if ColorMode.ONOFF in color_modes:
@@ -110,12 +119,29 @@ class GoveeAPILight(LightEntity, dict):
 
         self._state = None
         self._brightness = None
+        self.update_scenes()
 
     async def async_update(self):
         """Retrieve latest state."""
         _LOGGER.info("Updating device: %s", self.device_data)
 
-        if LightEntityFeature.EFFECT in self.supported_features_compat:
+        state = await self.hub.api.get_device_state(self.sku, self.device)
+        for cap in state["capabilities"]:
+            if cap['instance'] == 'powerSwitch':
+                self._state = cap['state']['value'] == 1
+            if cap['instance'] == 'brightness':
+                self._brightness = cap['state']['value']
+            if cap['instance'] == 'colorTemperatureK':
+                value = cap['state']['value']
+                if value != 0:
+                    self._attr_color_temp_kelvin = value
+                    self._attr_color_temp = color_util.color_temperature_kelvin_to_mired(value)
+            if cap['instance'] == 'colorRgb':
+                num = cap['state']['value']
+                self._attr_rgb_color = ((num >> 16) & 0xFF, (num >> 8) & 0xFF, num & 0xFF)
+
+    async def update_scenes(self):
+        if LightEntityFeature.EFFECT in self.supported_features:
             if self._attr_effect_list is None or len(self._attr_effect_list) == 0:
                 _LOGGER.info("Updating device effects: %s", self.device_data)
 
@@ -147,8 +173,8 @@ class GoveeAPILight(LightEntity, dict):
 
         if ATTR_BRIGHTNESS in kwargs:
             brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-            self._brightness = brightness
             await self.hub.api.set_brightness(self.sku, self.device, (brightness / 255) * 100)
+            self._brightness = brightness
 
         if ATTR_RGB_COLOR in kwargs:
             red, green, blue = kwargs.get(ATTR_RGB_COLOR)
@@ -172,8 +198,8 @@ class GoveeAPILight(LightEntity, dict):
         await self.hub.api.toggle_power(self.sku, self.device, 1)
 
     async def async_turn_off(self, **kwargs) -> None:
-        self._state = False
         await self.hub.api.toggle_power(self.sku, self.device, 0)
+        self._state = False
 
 
 class GoveeBluetoothLight(LightEntity):

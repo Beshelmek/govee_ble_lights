@@ -45,6 +45,17 @@ class GoveeAPI:
         })
         return response.json()
 
+    async def get_device_state(self, sku: str, device: str):
+        url = f"{self.base_url}/device/state"
+        response = await asyncio.to_thread(requests.post, url, headers=self.headers, json={
+            'requestId': uuid.uuid4().hex,
+            'payload': {
+                'sku': sku,
+                'device': device
+            }
+        })
+        return response.json()['payload']
+
     async def set_color_rgb(self, sku: str, device: str, r: int, g: int, b: int):
         url = f"{self.base_url}/device/control"
         response = await asyncio.to_thread(requests.post, url, headers=self.headers, json={
