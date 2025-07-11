@@ -33,6 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
 EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
+ALT_MANUAL_CMD_MODELS = ['H6055']
 
 class LedCommand(IntEnum):
     """ A control command packet's type. """
@@ -48,6 +49,7 @@ class LedMode(IntEnum):
     Currently only manual is supported.
     """
     MANUAL = 0x02
+    ALT_MANUAL = 0x0D
     MICROPHONE = 0x06
     SCENES = 0x05
     SEGMENTS = 0x15
@@ -272,7 +274,11 @@ class GoveeBluetoothLight(LightEntity):
                                                               [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
                                                                0x00, 0x00, 0xFF, 0x7F]))
             else:
-                commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
+                if self._model in ALT_MANUAL_CMD_MODELS:
+                    commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.ALT_MANUAL, red, green, blue]))
+                else:    
+                    commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
+                    
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
             if len(effect) > 0:
