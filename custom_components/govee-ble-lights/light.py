@@ -31,7 +31,7 @@ SCAN_INTERVAL = timedelta(seconds=30)
 _LOGGER = logging.getLogger(__name__)
 
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
-EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
+EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)/(\d+)\]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
 
 class LedCommand(IntEnum):
@@ -220,7 +220,7 @@ class GoveeBluetoothLight(LightEntity):
     @property
     def effect_list(self) -> list[str] | None:
         effect_list = []
-        json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
+        json_data = json.loads(Path(Path(__file__).parent, "jsons", (self._model + ".json")).read_text())
         for categoryIdx, category in enumerate(json_data['data']['categories']):
             for sceneIdx, scene in enumerate(category['scenes']):
                 for leffectIdx, lightEffect in enumerate(scene['lightEffects']):
@@ -284,7 +284,7 @@ class GoveeBluetoothLight(LightEntity):
                 lightEffectIndex = int(search.group(3))
                 specialEffectIndex = int(search.group(4))
 
-                json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
+                json_data = json.loads(Path(Path(__file__).parent, "jsons", (self._model + ".json")).read_text())
                 category = json_data['data']['categories'][categoryIndex]
                 scene = category['scenes'][sceneIndex]
                 lightEffect = scene['lightEffects'][lightEffectIndex]
