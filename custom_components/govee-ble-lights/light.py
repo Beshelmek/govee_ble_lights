@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import asyncio
 import logging
 import re
 
@@ -32,7 +33,21 @@ _LOGGER = logging.getLogger(__name__)
 
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
 EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
-SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
+# Models that use segment mode 0x15 with format: [0x15, 0x01, R, G, B, 0, 0, 0, 0, 0, 0xFF, 0x7F]
+SEGMENTED_MODELS = [
+    'H6053', 'H6072', 'H6102', 'H6199',
+    # H617x series confirmed to use segment mode 0x15
+    'H617A', 'H617C', 'H617E', 'H617F',
+    'H6171', 'H6172', 'H6173',
+]
+# RGBIC models that use segment mode 0x0b (if any - kept for future use)
+RGBIC_SEGMENT_MODELS = [
+    'H618A', 'H618C', 'H618E', 'H618F',
+    'H619A', 'H619C', 'H619E', 'H619F',
+    'H61A0', 'H61A1', 'H61A2', 'H61A5', 'H61A8',
+    'H61B2', 'H61C3', 'H61C5', 'H61E0', 'H61E1',
+    'H6602', 'H6609'
+]
 
 class LedCommand(IntEnum):
     """ A control command packet's type. """
@@ -44,13 +59,13 @@ class LedCommand(IntEnum):
 class LedMode(IntEnum):
     """
     The mode in which a color change happens in.
-    
-    Currently only manual is supported.
     """
-    MANUAL = 0x02
+    MANUAL = 0x02           # For non-RGBIC strips
+    SCENE_SELECT = 0x04     # Scene selection mode
+    SCENES = 0x05           # Legacy scenes mode
     MICROPHONE = 0x06
-    SCENES = 0x05
-    SEGMENTS = 0x15
+    SEGMENTS = 0x15         # Segment mode for H617x series
+    RGBIC_SEGMENT = 0x0b    # RGBIC segment mode (H618x, H619x, etc.)
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities):
@@ -213,6 +228,7 @@ class GoveeBluetoothLight(LightEntity):
         self._mac = hub.address
         self._model = config_entry.data["model"]
         self._is_segmented = self._model in SEGMENTED_MODELS
+        self._is_rgbic = self._model in RGBIC_SEGMENT_MODELS
         self._ble_device = ble_device
         self._state = None
         self._brightness = None
@@ -255,23 +271,66 @@ class GoveeBluetoothLight(LightEntity):
         return self._state
 
     async def async_turn_on(self, **kwargs) -> None:
-        commands = [self._prepareSinglePacketData(LedCommand.POWER, [0x1])]
+        # Send power on 3x for reliability on segmented models
+        power_cmd = self._prepareSinglePacketData(LedCommand.POWER, [0x1])
+        if self._is_segmented:
+            commands = [power_cmd, power_cmd, power_cmd]
+        else:
+            commands = [power_cmd]
 
         self._state = True
 
+        # Get brightness - either from kwargs or use stored value
+        brightness = kwargs.get(ATTR_BRIGHTNESS, self._brightness or 255)
         if ATTR_BRIGHTNESS in kwargs:
-            brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-            commands.append(self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [brightness]))
             self._brightness = brightness
 
+        # Get color - either from kwargs or use stored value
         if ATTR_RGB_COLOR in kwargs:
-            red, green, blue = kwargs.get(ATTR_RGB_COLOR)
+            self._attr_rgb_color = kwargs.get(ATTR_RGB_COLOR)
 
-            if self._is_segmented:
-                commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
-                                                              [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
-                                                               0x00, 0x00, 0xFF, 0x7F]))
+        rgb_color = getattr(self, '_attr_rgb_color', None) or (255, 255, 255)
+        red, green, blue = rgb_color
+
+        if self._is_segmented:
+            # H617C and similar: send brightness command (3x for reliability)
+            # Map HA brightness (0-255) to device range (0x14-0xFE)
+            if brightness <= 0:
+                device_brightness = 0x14
             else:
+                device_brightness = int(0x14 + (brightness * (0xFE - 0x14) / 255))
+                device_brightness = min(0xFE, max(0x14, device_brightness))
+            brightness_cmd = self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [device_brightness])
+            commands.extend([brightness_cmd, brightness_cmd, brightness_cmd])
+
+            # Only send color command if user is explicitly setting color NOW
+            # This prevents overwriting the device's current color when only brightness changes
+            if ATTR_RGB_COLOR in kwargs:
+                # Segmented models use mode 0x15 - send 3x for reliability
+                color_cmd = self._prepareSinglePacketData(LedCommand.COLOR,
+                                                          [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
+                                                           0x00, 0x00, 0xFF, 0x7F])
+                commands.extend([color_cmd, color_cmd, color_cmd])
+        elif self._is_rgbic:
+            # RGBIC models: use brightness command with mapped range
+            if ATTR_BRIGHTNESS in kwargs:
+                if brightness <= 0:
+                    device_brightness = 0x14
+                else:
+                    device_brightness = int(0x14 + (brightness * (0xfe - 0x14) / 255))
+                    device_brightness = min(0xfe, max(0x14, device_brightness))
+                commands.append(self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [device_brightness]))
+
+            if ATTR_RGB_COLOR in kwargs:
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
+                                                              [LedMode.RGBIC_SEGMENT, red, green, blue, 0x00, 0x00,
+                                                               0xFF, 0x7F]))
+        else:
+            # Non-segmented strips: use standard brightness command
+            if ATTR_BRIGHTNESS in kwargs:
+                commands.append(self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [brightness]))
+
+            if ATTR_RGB_COLOR in kwargs:
                 commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
@@ -290,31 +349,71 @@ class GoveeBluetoothLight(LightEntity):
                 lightEffect = scene['lightEffects'][lightEffectIndex]
                 specialEffect = lightEffect['specialEffect'][specialEffectIndex]
 
-                # Prepare packets to send big payload in separated chunks
-                for command in prepareMultiplePacketsData(0xa3,
-                                                          array.array('B', [0x02]),
-                                                          array.array('B',
-                                                                      base64.b64decode(specialEffect['scenceParam'])
-                                                                      )):
-                    commands.append(command)
+                if self._is_segmented:
+                    # H617C and similar: use simple scene mode command
+                    # Format: 0x33 0x05 0x04 sceneCode (2 bytes little endian)
+                    scene_code = scene.get('sceneCode', sceneIndex)
+                    scene_cmd = self._prepareSinglePacketData(LedCommand.COLOR,
+                        [LedMode.SCENE_SELECT, scene_code & 0xFF, (scene_code >> 8) & 0xFF])
+                    # Send 3x for reliability
+                    commands.extend([scene_cmd, scene_cmd, scene_cmd])
+                    _LOGGER.info("H617C effect: using scene mode with code %d", scene_code)
+                else:
+                    # Standard models: use multi-packet protocol
+                    for command in prepareMultiplePacketsData(0xa3,
+                        array.array('B', [0x02]),
+                        array.array('B',
+                                    base64.b64decode(specialEffect['scenceParam'])
+                                    )):
+                        commands.append(command)
 
-        for command in commands:
-            client = await self._connectBluetooth()
-            await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, command, False)
+        # Use single connection for all commands
+        client = await self._connectBluetooth()
+        if client is None:
+            _LOGGER.error("Failed to connect to BLE device %s", self._mac)
+            return
+        try:
+            for command in commands:
+                await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, command, False)
+                if self._is_segmented:
+                    await asyncio.sleep(0.15)  # Small delay between commands for reliability
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
 
     async def async_turn_off(self, **kwargs) -> None:
         client = await self._connectBluetooth()
-        await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC,
-                                     self._prepareSinglePacketData(LedCommand.POWER, [0x0]), False)
-        self._state = False
+        if client is None:
+            _LOGGER.error("Failed to connect to BLE device %s", self._mac)
+            return
+        try:
+            power_off_cmd = self._prepareSinglePacketData(LedCommand.POWER, [0x0])
+            # Send 3x with delays for reliability on segmented models
+            if self._is_segmented:
+                for _ in range(3):
+                    await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, power_off_cmd, False)
+                    await asyncio.sleep(0.2)
+            else:
+                await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, power_off_cmd, False)
+            self._state = False
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
 
-    async def _connectBluetooth(self) -> BleakClient:
+    async def _connectBluetooth(self) -> BleakClient | None:
         for i in range(3):
             try:
                 client = await bleak_retry_connector.establish_connection(BleakClient, self._ble_device, self.unique_id)
                 return client
-            except:
+            except Exception as e:
+                _LOGGER.warning("BLE connection attempt %d failed for %s: %s", i + 1, self._mac, str(e))
                 continue
+        _LOGGER.error("All BLE connection attempts failed for %s", self._mac)
+        return None
 
     def _prepareSinglePacketData(self, cmd, payload):
         if not isinstance(cmd, int):
