@@ -29,6 +29,73 @@ A powerful and seamless integration to control your Govee lighting devices via G
 
 ---
 
+## Fork additions: H617A dynamic scenes over BLE
+
+This fork adds working **dynamic scene** support for the **H617A** RGBIC strip over
+local BLE, plus a more resilient BLE transport. Changes live in
+`custom_components/govee-ble-lights/light.py` and add the scene catalogue
+`jsons/H617A.json` (payload-identical to the already-bundled `H617C.json`).
+
+### The missing "activate scene" command
+
+On the H617A, uploading a scene's `scenceParam` with the `0xa3` multi-packet
+protocol only *loads* the scene into the strip's memory — it does **not** switch
+the strip out of manual-colour mode, so the scene never plays. The strip starts
+animating only after an explicit **activate** packet:
+
+```
+33 05 04 <sceneCodeLo> <sceneCodeHi>      # sceneCode is 2-byte little-endian
+```
+
+`sceneCode` comes from the model JSON per light-effect. So setting a scene is two
+steps over one BLE session: **(1)** send the `0xa3` `scenceParam` upload, **(2)**
+send the activate packet. This was reverse-engineered live on H617A hardware;
+~25 scenes across all nine categories animate correctly from the standard
+Home Assistant effect dropdown.
+
+### BLE transport hardening
+
+- All packets of a command ride **one** freshly-established connection; the link
+  is held open briefly so a scene upload commits, then closed on an idle timer
+  (so it doesn't hog a Bluetooth-proxy connection slot).
+- A held connection is never reused (an idle strip behind an ESPHome BLE proxy
+  keeps reporting `is_connected == True` while silently dropping
+  write-without-response packets).
+- Per-entity command lock + a module-level connect lock serialise access to the
+  shared adapter; `available` reflects the BT stack; state survives restarts via
+  `RestoreEntity`. Effect names are rendered readably (`Category - Scene`).
+
+### Scene speed control
+
+There is **no separate BLE "speed" command**. The Govee app sets a scene's speed
+by *rewriting bytes inside the `scenceParam` blob* before uploading it: it decodes
+the effect segments and overwrites their colour/move/brightness timing fields with
+values drawn from the scene's own `speedInfo` lookup table at a chosen index. This
+fork reproduces that rewrite (`govee_scene_speed.py`), so scene speed is adjustable
+from Home Assistant. The speed tables already live in the bundled catalogue, so no
+extra capture is needed; an unrecognised blob is uploaded untouched.
+
+Two entity services are exposed (target a Govee light entity):
+
+- **`govee-ble-lights.set_speed`** — set *this strip's* speed: an integer level
+  (`0` = liveliest; higher = calmer, range varies per scene), `"auto"` (default —
+  follow the scene's saved/Govee-recommended speed), or `"off"` (upload the scene
+  baseline untouched). Re-applies the current effect immediately.
+- **`govee-ble-lights.set_scene_speed`** — save (or clear) a per-scene speed
+  preset for the current effect. An integer pins that scene's speed for every strip
+  that's on `"auto"`; `"auto"` clears the preset back to Govee's default. Presets
+  persist to Home Assistant storage (survive restarts and HACS updates).
+
+Resolution precedence: **strip's pinned level → saved scene preset → `auto`
+(Govee's per-scene `defaultIndex`)**. Each light exposes `speed_index`,
+`scene_speed_preset` and `resolved_speed` attributes so the active level is visible.
+
+> Speed "feel" is per-scene: the byte's direction and range depend on the scene's
+> colour type, so the same level looks different across scenes. Inherently flashing
+> scenes (e.g. fireworks) still flicker even at their calmest level.
+
+---
+
 ## Configuration
 
 ### What is needed

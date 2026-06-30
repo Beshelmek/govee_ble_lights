@@ -1,0 +1,44 @@
+set_speed:
+  name: Set strip speed
+  description: >-
+    Set this strip's scene speed. Applies immediately to the current effect and
+    persists across restarts. Speed "feel" is per-scene: the byte's direction and
+    range depend on the scene's colour type, so the same level looks different
+    across scenes.
+  target:
+    entity:
+      integration: govee-ble-lights
+      domain: light
+  fields:
+    speed_index:
+      name: Speed
+      description: >-
+        An integer level (0 = liveliest; higher = calmer, range varies per
+        scene), "auto" (follow the scene's saved/Govee-recommended speed), or
+        "off" (upload the scene baseline untouched).
+      required: true
+      example: "auto"
+      selector:
+        text:
+
+set_scene_speed:
+  name: Set scene speed preset
+  description: >-
+    Save (or clear) a per-scene speed preset for this strip's current effect. An
+    integer pins that scene's speed for every strip that's on "auto"; "auto"
+    clears the preset back to Govee's default. Presets persist to Home Assistant
+    storage.
+  target:
+    entity:
+      integration: govee-ble-lights
+      domain: light
+  fields:
+    speed_index:
+      name: Speed
+      description: >-
+        An integer to pin this scene's speed (0 = liveliest; higher = calmer),
+        or "auto" to clear the preset back to Govee's per-scene default.
+      required: true
+      example: "auto"
+      selector:
+        text:

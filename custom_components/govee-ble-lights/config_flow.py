@@ -33,11 +33,20 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_TYPE_BLE: 'BLE',
         }
 
-        jsons_path = Path(Path(__file__).parent / "jsons")
-        for file in jsons_path.iterdir():
-            self._available_models.append(file.name.replace(".json", ""))
+    async def _async_ensure_models(self) -> None:
+        """Populate the model list from the bundled catalogues, off the event loop.
 
-        self._available_models.sort()
+        Scanning the jsons/ directory is blocking I/O, so it must not run in
+        __init__ (which executes on the event loop). Done lazily here and cached.
+        """
+        if self._available_models:
+            return
+        jsons_path = Path(__file__).parent / "jsons"
+
+        def _scan() -> list[str]:
+            return sorted(f.name.replace(".json", "") for f in jsons_path.iterdir())
+
+        self._available_models = await self.hass.async_add_executor_job(_scan)
 
     async def async_step_bluetooth(
             self, discovery_info: BluetoothServiceInfoBleak
@@ -61,6 +70,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_MODEL: model
             })
 
+        await self._async_ensure_models()
         self._set_confirm_only()
         placeholders = {
             "name": title,
@@ -101,6 +111,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors = {}
+        await self._async_ensure_models()
         current_addresses = self._async_current_ids()
         for discovery_info in async_discovered_service_info(self.hass, False):
             address = discovery_info.address

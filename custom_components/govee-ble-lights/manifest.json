@@ -17,5 +17,5 @@
     "documentation": "https://github.com/Beshelmek/govee_ble_lights",
     "config_flow": true,
     "iot_class": "local_polling",
-    "version": "0.1.1"
+    "version": "0.1.5"
 }
