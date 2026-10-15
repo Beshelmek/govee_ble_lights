@@ -216,23 +216,28 @@ class GoveeBluetoothLight(LightEntity):
         self._ble_device = ble_device
         self._state = None
         self._brightness = None
+        self._json_data = None
+
+    async def async_added_to_hass(self) -> None:
+        """Load JSON data into cache when entity is added."""
+        json_path = Path(__file__).parent / "jsons" / (self._model + ".json")
+        self._json_data = await self.hass.async_add_executor_job(
+            lambda: json.loads(json_path.read_text())
+        )
 
     @property
     def effect_list(self) -> list[str] | None:
+        if self._json_data is None:
+            return []
         effect_list = []
-        json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
-        for categoryIdx, category in enumerate(json_data['data']['categories']):
+        for categoryIdx, category in enumerate(self._json_data['data']['categories']):
             for sceneIdx, scene in enumerate(category['scenes']):
                 for leffectIdx, lightEffect in enumerate(scene['lightEffects']):
                     for seffectIxd, specialEffect in enumerate(lightEffect['specialEffect']):
-                        # if 'supportSku' not in specialEffect or self._model in specialEffect['supportSku']:
-                        # Workaround cause we need to store some metadata in effect (effect names not unique)
-                        indexes = str(categoryIdx) + "/" + str(sceneIdx) + "/" + str(leffectIdx) + "/" + str(
-                            seffectIxd)
+                        indexes = str(categoryIdx) + "/" + str(sceneIdx) + "/" + str(leffectIdx) + "/" + str(seffectIxd)
                         effect_list.append(
                             category['categoryName'] + " - " + scene['sceneName'] + ' - ' + lightEffect[
                                 'scenceName'] + " [" + indexes + "]")
-
         return effect_list
 
     @property
@@ -284,7 +289,7 @@ class GoveeBluetoothLight(LightEntity):
                 lightEffectIndex = int(search.group(3))
                 specialEffectIndex = int(search.group(4))
 
-                json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
+                json_data = self._json_data
                 category = json_data['data']['categories'][categoryIndex]
                 scene = category['scenes'][sceneIndex]
                 lightEffect = scene['lightEffects'][lightEffectIndex]

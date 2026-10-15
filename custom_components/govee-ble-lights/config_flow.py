@@ -33,11 +33,15 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_TYPE_BLE: 'BLE',
         }
 
+    async def _async_load_models(self) -> None:
+        """Load available models from the jsons directory asynchronously."""
+        if self._available_models:
+            return
         jsons_path = Path(Path(__file__).parent / "jsons")
-        for file in jsons_path.iterdir():
-            self._available_models.append(file.name.replace(".json", ""))
-
-        self._available_models.sort()
+        files = await self.hass.async_add_executor_job(
+            lambda: list(jsons_path.iterdir())
+        )
+        self._available_models = sorted(f.name.replace(".json", "") for f in files)
 
     async def async_step_bluetooth(
             self, discovery_info: BluetoothServiceInfoBleak
@@ -52,6 +56,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
             self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Confirm discovery."""
+        await self._async_load_models()
         assert self._discovery_info is not None
         discovery_info = self._discovery_info
         title = discovery_info.name
@@ -100,6 +105,7 @@ class GoveeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_ble(
             self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
+        await self._async_load_models()
         errors = {}
         current_addresses = self._async_current_ids()
         for discovery_info in async_discovered_service_info(self.hass, False):
