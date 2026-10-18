@@ -34,9 +34,27 @@ _LOGGER = logging.getLogger(__name__)
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
 EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)/(\d+)]")
 SCENE_EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)]")
+MUSIC_EFFECT_PARSE = re.compile(r"\[music/(\d+)]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
 # Models whose built-in scenes are activated by scene code (lightEffects), instead of specialEffect payloads
 SCENE_CODE_MODELS = ['H6102']
+# Microphone music modes for SCENE_CODE_MODELS (33 05 11 selector, as on H6125): code -> (name, default parameter body or None).
+# Basic modes need only the selector; newer modes upload their parameters (7-colour palette + settings) first.
+MUSIC_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+MUSIC_MODES = {
+    0x10: ('Energetic', None),
+    0x11: ('Rhythm', None),
+    0x12: ('Spectrum', None),
+    0x13: ('Rolling', None),
+    0x32: ('Separation', "32" + MUSIC_PALETTE + "030061"),
+    0x33: ('Hopping', "33" + MUSIC_PALETTE + "010101196201030000"),
+    0x34: ('Piano Keys', "34" + MUSIC_PALETTE + "0000000000"),
+    0x35: ('Fountain', "35" + MUSIC_PALETTE + "01000000"),
+    0x37: ('Day and Night', "37" + MUSIC_PALETTE + "071400"),
+    0x30: ('Bloom', "30" + MUSIC_PALETTE + "0a50"),
+    0x31: ('Shiny', "31" + MUSIC_PALETTE + "05640a"),
+}
+MUSIC_SENSITIVITY = 99
 PACKET_DELAY = 0.1
 
 class LedCommand(IntEnum):
@@ -54,6 +72,7 @@ class LedMode(IntEnum):
     """
     MANUAL = 0x02
     SCENE_CODE = 0x04
+    MUSIC = 0x11
     MICROPHONE = 0x06
     SCENES = 0x05
     SEGMENTS = 0x15
@@ -259,6 +278,10 @@ class GoveeBluetoothLight(LightEntity):
                             category['categoryName'] + " - " + scene['sceneName'] + ' - ' + lightEffect[
                                 'scenceName'] + " [" + indexes + "]")
 
+        if self._uses_scene_codes:
+            for code, (name, _) in MUSIC_MODES.items():
+                effect_list.append("Music Mode - " + name + " [music/" + str(code) + "]")
+
         return effect_list
 
     @property
@@ -326,7 +349,19 @@ class GoveeBluetoothLight(LightEntity):
                 commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
-            if len(effect) > 0 and self._uses_scene_codes:
+            music = MUSIC_EFFECT_PARSE.search(effect) if self._uses_scene_codes else None
+            if music:
+                code = int(music.group(1))
+                params = MUSIC_MODES[code][1]
+                if params:
+                    for command in prepareMultiplePacketsData(0xa3,
+                                                              array.array('B', [0x41]),
+                                                              array.array('B', bytes.fromhex(params))):
+                        commands.append(bytes(command))
+                # Mode, sensitivity, style (dynamic), no fixed colour
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
+                                                              [LedMode.MUSIC, code, MUSIC_SENSITIVITY, 0x00, 0x00]))
+            elif len(effect) > 0 and self._uses_scene_codes:
                 search = SCENE_EFFECT_PARSE.search(effect)
                 category = self._effect_data['data']['categories'][int(search.group(1))]
                 scene = category['scenes'][int(search.group(2))]
