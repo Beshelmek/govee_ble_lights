@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import asyncio
 import logging
 import re
 
@@ -31,8 +32,30 @@ SCAN_INTERVAL = timedelta(seconds=30)
 _LOGGER = logging.getLogger(__name__)
 
 UUID_CONTROL_CHARACTERISTIC = '00010203-0405-0607-0809-0a0b0c0d2b11'
-EFFECT_PARSE = re.compile("\[(\d+)/(\d+)/(\d+)/(\d+)]")
+EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)/(\d+)]")
+SCENE_EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)]")
+MUSIC_EFFECT_PARSE = re.compile(r"\[music/(\d+)]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
+# Models whose built-in scenes are activated by scene code (lightEffects), instead of specialEffect payloads
+SCENE_CODE_MODELS = ['H6102']
+# Microphone music modes for SCENE_CODE_MODELS (33 05 11 selector, as on H6125): code -> (name, default parameter body or None).
+# Basic modes need only the selector; newer modes upload their parameters (7-colour palette + settings) first.
+MUSIC_PALETTE = "07ff0000ff7f00ffff0000ff000000ff00ffff8b00ff"
+MUSIC_MODES = {
+    0x10: ('Energetic', None),
+    0x11: ('Rhythm', None),
+    0x12: ('Spectrum', None),
+    0x13: ('Rolling', None),
+    0x32: ('Separation', "32" + MUSIC_PALETTE + "030061"),
+    0x33: ('Hopping', "33" + MUSIC_PALETTE + "010101196201030000"),
+    0x34: ('Piano Keys', "34" + MUSIC_PALETTE + "0000000000"),
+    0x35: ('Fountain', "35" + MUSIC_PALETTE + "01000000"),
+    0x37: ('Day and Night', "37" + MUSIC_PALETTE + "071400"),
+    0x30: ('Bloom', "30" + MUSIC_PALETTE + "0a50"),
+    0x31: ('Shiny', "31" + MUSIC_PALETTE + "05640a"),
+}
+MUSIC_SENSITIVITY = 99
+PACKET_DELAY = 0.1
 
 class LedCommand(IntEnum):
     """ A control command packet's type. """
@@ -48,6 +71,8 @@ class LedMode(IntEnum):
     Currently only manual is supported.
     """
     MANUAL = 0x02
+    SCENE_CODE = 0x04
+    MUSIC = 0x11
     MICROPHONE = 0x06
     SCENES = 0x05
     SEGMENTS = 0x15
@@ -213,17 +238,37 @@ class GoveeBluetoothLight(LightEntity):
         self._mac = hub.address
         self._model = config_entry.data["model"]
         self._is_segmented = self._model in SEGMENTED_MODELS
+        self._uses_scene_codes = self._model in SCENE_CODE_MODELS
         self._ble_device = ble_device
         self._state = None
         self._brightness = None
+        self._effect_data = None
+        self._effect_list = []
 
-    @property
-    def effect_list(self) -> list[str] | None:
+    async def async_added_to_hass(self) -> None:
+        # Load the scene library once, off the event loop
+        self._effect_data = await self.hass.async_add_executor_job(self._load_effect_data)
+        self._effect_list = self._build_effect_list()
+
+    def _load_effect_data(self) -> dict:
+        path = Path(__file__).parent / "jsons" / (self._model + ".json")
+        if not path.exists():
+            return {'data': {'categories': []}}
+        return json.loads(path.read_text())
+
+    def _build_effect_list(self) -> list[str]:
         effect_list = []
-        json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
-        for categoryIdx, category in enumerate(json_data['data']['categories']):
+        for categoryIdx, category in enumerate(self._effect_data['data']['categories']):
             for sceneIdx, scene in enumerate(category['scenes']):
                 for leffectIdx, lightEffect in enumerate(scene['lightEffects']):
+                    if self._uses_scene_codes:
+                        # Workaround cause we need to store some metadata in effect (effect names not unique)
+                        name = category['categoryName'] + " - " + scene['sceneName']
+                        if lightEffect['scenceName']:
+                            name += " / " + lightEffect['scenceName']
+                        effect_list.append(name.replace("\xa0", " ") + " [" + str(categoryIdx) + "/" + str(
+                            sceneIdx) + "/" + str(leffectIdx) + "]")
+                        continue
                     for seffectIxd, specialEffect in enumerate(lightEffect['specialEffect']):
                         # if 'supportSku' not in specialEffect or self._model in specialEffect['supportSku']:
                         # Workaround cause we need to store some metadata in effect (effect names not unique)
@@ -233,7 +278,36 @@ class GoveeBluetoothLight(LightEntity):
                             category['categoryName'] + " - " + scene['sceneName'] + ' - ' + lightEffect[
                                 'scenceName'] + " [" + indexes + "]")
 
+        if self._uses_scene_codes:
+            for code, (name, _) in MUSIC_MODES.items():
+                effect_list.append("Music Mode - " + name + " [music/" + str(code) + "]")
+
         return effect_list
+
+    @property
+    def effect_list(self) -> list[str] | None:
+        return self._effect_list
+
+    def _prepareSceneCodeCommands(self, lightEffect) -> list:
+        """Scene upload (if the scene has parameters) followed by scene code activation."""
+        commands = []
+        sceneParam = lightEffect['scenceParam']
+        # Prefer a model-specific payload when the library provides one
+        for specialEffect in lightEffect['specialEffect']:
+            if self._model in (specialEffect.get('supportSku') or []) and specialEffect['scenceParam']:
+                sceneParam = specialEffect['scenceParam']
+                break
+
+        if sceneParam:
+            for command in prepareMultiplePacketsData(0xa3,
+                                                      array.array('B', [0x02]),
+                                                      array.array('B', base64.b64decode(sceneParam))):
+                commands.append(bytes(command))
+
+        code = int(lightEffect['sceneCode'])
+        commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
+                                                      [LedMode.SCENE_CODE, code & 0xFF, (code >> 8) & 0xFF]))
+        return commands
 
     @property
     def name(self) -> str:
@@ -275,7 +349,25 @@ class GoveeBluetoothLight(LightEntity):
                 commands.append(self._prepareSinglePacketData(LedCommand.COLOR, [LedMode.MANUAL, red, green, blue]))
         if ATTR_EFFECT in kwargs:
             effect = kwargs.get(ATTR_EFFECT)
-            if len(effect) > 0:
+            music = MUSIC_EFFECT_PARSE.search(effect) if self._uses_scene_codes else None
+            if music:
+                code = int(music.group(1))
+                params = MUSIC_MODES[code][1]
+                if params:
+                    for command in prepareMultiplePacketsData(0xa3,
+                                                              array.array('B', [0x41]),
+                                                              array.array('B', bytes.fromhex(params))):
+                        commands.append(bytes(command))
+                # Mode, sensitivity, style (dynamic), no fixed colour
+                commands.append(self._prepareSinglePacketData(LedCommand.COLOR,
+                                                              [LedMode.MUSIC, code, MUSIC_SENSITIVITY, 0x00, 0x00]))
+            elif len(effect) > 0 and self._uses_scene_codes:
+                search = SCENE_EFFECT_PARSE.search(effect)
+                category = self._effect_data['data']['categories'][int(search.group(1))]
+                scene = category['scenes'][int(search.group(2))]
+                lightEffect = scene['lightEffects'][int(search.group(3))]
+                commands.extend(self._prepareSceneCodeCommands(lightEffect))
+            elif len(effect) > 0:
                 search = EFFECT_PARSE.search(effect)
 
                 # Parse effect indexes
@@ -284,8 +376,7 @@ class GoveeBluetoothLight(LightEntity):
                 lightEffectIndex = int(search.group(3))
                 specialEffectIndex = int(search.group(4))
 
-                json_data = json.loads(Path(Path(__file__).parent / "jsons" / (self._model + ".json")).read_text())
-                category = json_data['data']['categories'][categoryIndex]
+                category = self._effect_data['data']['categories'][categoryIndex]
                 scene = category['scenes'][sceneIndex]
                 lightEffect = scene['lightEffects'][lightEffectIndex]
                 specialEffect = lightEffect['specialEffect'][specialEffectIndex]
@@ -298,8 +389,12 @@ class GoveeBluetoothLight(LightEntity):
                                                                       )):
                     commands.append(command)
 
-        for command in commands:
-            client = await self._connectBluetooth()
+        # One connection for the whole sequence, so multi-packet scene uploads aren't split across reconnects
+        client = await self._connectBluetooth()
+        for index, command in enumerate(commands):
+            if index:
+                # Writes are without response; pace them so the device doesn't drop packets
+                await asyncio.sleep(PACKET_DELAY)
             await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, command, False)
 
     async def async_turn_off(self, **kwargs) -> None:
