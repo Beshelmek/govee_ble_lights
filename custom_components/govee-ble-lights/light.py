@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import array
+import asyncio
 import logging
 import re
 
@@ -36,6 +37,7 @@ SCENE_EFFECT_PARSE = re.compile(r"\[(\d+)/(\d+)/(\d+)]")
 SEGMENTED_MODELS = ['H6053', 'H6072', 'H6102', 'H6199']
 # Models whose built-in scenes are activated by scene code (lightEffects), instead of specialEffect payloads
 SCENE_CODE_MODELS = ['H6102']
+PACKET_DELAY = 0.1
 
 class LedCommand(IntEnum):
     """ A control command packet's type. """
@@ -354,7 +356,10 @@ class GoveeBluetoothLight(LightEntity):
 
         # One connection for the whole sequence, so multi-packet scene uploads aren't split across reconnects
         client = await self._connectBluetooth()
-        for command in commands:
+        for index, command in enumerate(commands):
+            if index:
+                # Writes are without response; pace them so the device doesn't drop packets
+                await asyncio.sleep(PACKET_DELAY)
             await client.write_gatt_char(UUID_CONTROL_CHARACTERISTIC, command, False)
 
     async def async_turn_off(self, **kwargs) -> None:
